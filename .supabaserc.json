@@ -1,0 +1,12 @@
+﻿{
+  "projects": {
+    "default": {
+      "api_url": "https://nseyfiznwnhwvfdlzejn.supabase.co",
+      "db_url": "postgresql://postgres:[YOUR_PASSWORD]@db.nseyfiznwnhwvfdlzejn.supabase.co:5432/postgres",
+      "graphql_url": "https://nseyfiznwnhwvfdlzejn.supabase.co/graphql/v1",
+      "jwt_secret": "[PLACEHOLDER]",
+      "project_id": "nseyfiznwnhwvfdlzejn",
+      "region": "eu-west-2"
+    }
+  }
+}
