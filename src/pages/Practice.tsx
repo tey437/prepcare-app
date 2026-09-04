@@ -23,8 +23,13 @@ export function Practice() {
     setStarting(true);
     setError(null);
     try {
-      const { interviewId } = await startInterview({ mode: "practice", practiceRole: chosenRole });
-      navigate(`/interview-session/${interviewId}`);
+      const { interviewId, engine } = await startInterview({ mode: "practice", practiceRole: chosenRole });
+      // Pass the opening question along directly — the interview session
+      // screen can't fetch it itself (candidates can't read the transcript
+      // table directly, by design), so it has to be handed off here.
+      navigate(`/interview-session/${interviewId}`, {
+        state: { question: engine.next_question, turnNo: engine.turn_no ?? 1 },
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not start the practice session.");
       setStarting(false);

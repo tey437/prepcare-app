@@ -1,10 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { AnimatePresence, motion } from "framer-motion";
-import { supabase } from "@/lib/supabaseClient";
 import { submitAnswer } from "@/lib/conversationEngine";
-import { ListeningPulse } from "@/components/ListeningPulse";
-import type { TranscriptEntry } from "@/lib/types";
 
 interface SpeechRecognitionResult {
   transcript: string;
@@ -34,12 +31,19 @@ function getSpeechRecognition(): SpeechRecognitionLike | null {
 
 const MAX_TURNS = 8;
 
+interface LocationState {
+  question?: string;
+  turnNo?: number;
+}
+
 export function InterviewSession() {
   const { interviewId } = useParams<{ interviewId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
+  const initialState = (location.state as LocationState | null) ?? null;
 
-  const [question, setQuestion] = useState<string>("Loading your first question…");
-  const [turnNo, setTurnNo] = useState(1);
+  const [question, setQuestion] = useState<string>(initialState?.question ?? "");
+  const [turnNo, setTurnNo] = useState(initialState?.turnNo ?? 1);
   const [answer, setAnswer] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [listening, setListening] = useState(false);
@@ -47,22 +51,18 @@ export function InterviewSession() {
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const speechSupported = typeof window !== "undefined" && "webkitSpeechRecognition" in window;
 
+  // If someone lands here without the question already in navigation state
+  // (e.g. they refreshed the page), we have no reliable way to recover the
+  // current question — candidates aren't allowed to read the transcript
+  // table directly (by design, for privacy/security). Rather than spinning
+  // forever, tell them plainly what happened.
   useEffect(() => {
-    if (!interviewId) return;
-    (async () => {
-      const { data } = await supabase
-        .from("transcript_entries")
-        .select("*")
-        .eq("interview_id", interviewId)
-        .order("turn_no", { ascending: true })
-        .limit(1);
-      const first = (data as TranscriptEntry[] | null)?.[0];
-      if (first) {
-        setQuestion(first.question);
-        setTurnNo(first.turn_no);
-      }
-    })();
-  }, [interviewId]);
+    if (!initialState?.question) {
+      setError(
+        "This interview session couldn't be resumed (usually because the page was refreshed or opened directly). Please start a new session."
+      );
+    }
+  }, [initialState]);
 
   function speak(text: string) {
     if (!("speechSynthesis" in window)) return;
@@ -131,59 +131,71 @@ export function InterviewSession() {
         <span className="font-mono text-xs text-ink-faint">Turn {turnNo}</span>
       </div>
 
-      <AnimatePresence mode="wait">
-        <motion.div
-          key={question}
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -8 }}
-          transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-          className="card p-8"
-        >
-          <div className="flex items-start justify-between gap-3">
-            <p className="text-xl font-medium leading-snug text-ink">{question}</p>
-            <button
-              type="button"
-              onClick={() => speak(question)}
-              title="Play question aloud"
-              className="shrink-0 rounded-full border border-line p-2 text-ink-soft transition-colors hover:border-moss hover:text-moss"
-            >
-              🔊
-            </button>
-          </div>
-
-          <form onSubmit={handleSubmit} className="mt-6">
-            <textarea
-              className="field-input min-h-[120px]"
-              placeholder="Type your answer, or use the microphone below…"
-              value={answer}
-              onChange={(e) => setAnswer(e.target.value)}
-            />
-            <div className="mt-3 flex items-center gap-3">
-              {speechSupported && (
+      {!question && !error ? (
+        <div className="card space-y-3 p-8">
+          <div className="skeleton h-6 w-3/4" />
+          <div className="skeleton h-24 w-full" />
+        </div>
+      ) : (
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={question}
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+            className="card p-8"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <p className="text-xl font-medium leading-snug text-ink">{question}</p>
+              {question && (
                 <button
                   type="button"
-                  onClick={toggleListening}
-                  className={`btn-secondary ${listening ? "!border-signal !text-signal" : ""}`}
+                  onClick={() => speak(question)}
+                  title="Play question aloud"
+                  className="shrink-0 rounded-full border border-line p-2 text-ink-soft transition-colors hover:border-moss hover:text-moss"
                 >
-                  {listening ? (
-                    <>
-                      <ListeningPulse /> Listening…
-                    </>
-                  ) : (
-                    "🎤 Speak answer"
-                  )}
+                  🔊
                 </button>
               )}
-              <button type="submit" disabled={submitting || !answer.trim()} className="btn-primary ml-auto">
-                {submitting ? "Sending…" : "Submit answer"}
-              </button>
             </div>
-          </form>
 
-          {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-        </motion.div>
-      </AnimatePresence>
+            {question && (
+              <form onSubmit={handleSubmit} className="mt-6">
+                <textarea
+                  className="field-input min-h-[120px]"
+                  placeholder="Type your answer, or use the microphone below…"
+                  value={answer}
+                  onChange={(e) => setAnswer(e.target.value)}
+                />
+                <div className="mt-3 flex items-center gap-3">
+                  {speechSupported && (
+                    <button
+                      type="button"
+                      onClick={toggleListening}
+                      className={`btn-secondary ${listening ? "!border-signal !text-signal" : ""}`}
+                    >
+                      {listening ? "● Listening…" : "🎤 Speak answer"}
+                    </button>
+                  )}
+                  <button type="submit" disabled={submitting || !answer.trim()} className="btn-primary ml-auto">
+                    {submitting ? "Sending…" : "Submit answer"}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {error && (
+              <div className="mt-4 rounded-lg bg-red-50 p-4">
+                <p className="text-sm text-red-600">{error}</p>
+                <button onClick={() => navigate("/practice")} className="btn-secondary mt-3 !py-1.5 !text-xs">
+                  Start a new session
+                </button>
+              </div>
+            )}
+          </motion.div>
+        </AnimatePresence>
+      )}
 
       <p className="mt-4 text-center text-xs text-ink-faint">
         Your score won't be shown until the interview ends.

@@ -33,12 +33,17 @@ export function InterviewLanding() {
     setStarting(true);
     setError(null);
     try {
-      const { interviewId } = await startInterview({
+      const { interviewId, engine } = await startInterview({
         mode: "live",
         jobProfileId: profile.job_profile_id,
         candidateName: candidateName || undefined,
       });
-      navigate(`/interview-session/${interviewId}`);
+      // Pass the opening question along directly — the interview session
+      // screen can't fetch it itself (candidates can't read the transcript
+      // table directly, by design), so it has to be handed off here.
+      navigate(`/interview-session/${interviewId}`, {
+        state: { question: engine.next_question, turnNo: engine.turn_no ?? 1 },
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not start the interview.");
       setStarting(false);
